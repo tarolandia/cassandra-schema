@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+usage = <<-USAGE
+Usage:
+
+  scripts/test-run --help             # Show this help text
+  scripts/test-run                    # Run all tests in test/**/*.rb
+  scripts/test-run DIR                # Run all tests in test/DIR/**/*.rb
+  scripts/test-run FILE1.rb FILE2.rb  # Run all tests in FILE1.rb and FILE2.rb
+USAGE
+
+TEST_DIR   = File.expand_path("../test", File.dirname(__FILE__))
+TEST_SEED  = ENV.fetch("TEST_SEED", rand(99999)).to_i
+TEST_FILES = case ARGV.first
+             when "--help"       then warn usage; exit 0
+             when nil            then Dir["#{TEST_DIR}/**/*.rb"]
+             when %r(\A[\w/]+\z) then Dir["#{TEST_DIR}/#{ARGV.first}/**/*.rb"]
+             else                     ARGV.map { |file| "#{TEST_DIR}/#{file}" }
+             end
+
+puts "Loading test files with TEST_SEED=#{TEST_SEED}"
+puts
+
+TEST_FILES.shuffle(random: Random.new(TEST_SEED)).each { |rb| require rb }

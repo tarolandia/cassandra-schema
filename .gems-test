@@ -1,0 +1,2 @@
+cassandra-driver -v 3.2.0
+lz4-ruby -v 0.3.3

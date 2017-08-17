@@ -1,0 +1,19 @@
+FROM ruby:2.4.1-alpine
+
+# Tell pry to use `more` as the pager because the installed version of `less`
+# does not support passing the `-R` which is used by pry.
+ENV PAGER="more"
+
+# Install runtime dependencies
+RUN apk add --update libcurl
+
+# Install gem dependency specifications.
+COPY .gems-test /tmp/
+
+# Install gem build dependencies, install gems, purge gem build dependencies.
+RUN apk add --update -t gem-build-deps libffi-dev make gcc g++ musl-dev && \
+    gem install dep:1.1.0 && \
+    cd /tmp && \
+    dep -f .gems      install && dep -f .gems      && rm .gems && \
+    dep -f .gems-test install && dep -f .gems-test && rm .gems-test && \
+    apk del --purge gem-build-deps

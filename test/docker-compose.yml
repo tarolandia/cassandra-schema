@@ -1,0 +1,21 @@
+---
+version: '2'
+
+services:
+  cassandra:
+    image: cassandra:3.11
+
+  test:
+    command: tail -f /dev/null # wait for tests to be run via docker exec
+    image: cassandra/schema:test
+    working_dir: /opt/test
+    volumes:
+      - ${PWD}:/opt/test
+    links:
+      - cassandra
+    environment:
+      CASSANDRA_USERNAME: cassandra
+      CASSANDRA_PASSWORD: cassandra
+      CASSANDRA_HOSTS: cassandra
+      CASSANDRA_PORT: 9042
+      CASSANDRA_KEYSPACE: cassandra_schema_test

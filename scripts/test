@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+# Move to the base project directory if not there already.
+cd "$(dirname "$0")"/..
+
+# Make sure the latest test image is built.
+docker build -t cassandra/schema:test -f Dockerfile.test .
+
+# Run the given tests in the test container.
+docker-compose -p cassandraschematest -f test/docker-compose.yml run --rm test \
+  sh -c "scripts/test-run ${@}"
