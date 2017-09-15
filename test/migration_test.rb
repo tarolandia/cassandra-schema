@@ -1,6 +1,6 @@
 require "minitest/autorun"
 
-require_relative "../lib/cassandra_schema/migration"
+require_relative "../lib/cassandra-schema/migration"
 
 describe "CassandraSchema::Migration" do
   before do

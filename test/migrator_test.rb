@@ -1,7 +1,7 @@
 require "minitest/autorun"
 
 require_relative "support/connections"
-require_relative "../lib/cassandra_schema/migrator"
+require_relative "../lib/cassandra-schema/migrator"
 
 class FakeLogger
   attr_reader :stdout
