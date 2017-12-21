@@ -74,8 +74,24 @@ describe "CassandraSchema::Migrator" do
       end
 
       down do
+        execute "DROP MATERIALIZED VIEW table_by_description"
+
         execute "ALTER TABLE table_by_name DROP alt_email"
         execute "ALTER TABLE table_by_name DROP email"
+
+        execute <<~CQL
+          CREATE MATERIALIZED VIEW table_by_description AS
+            SELECT
+              id,
+              name,
+              description
+            FROM table_by_name
+            WHERE id IS NOT NULL
+              AND name IS NOT NULL
+              AND description IS NOT NULL
+            PRIMARY KEY (id, description, name)
+            WITH CLUSTERING ORDER BY (description ASC, name ASC)
+        CQL
       end
     end
 
@@ -89,7 +105,9 @@ describe "CassandraSchema::Migrator" do
       logger: @fake_logger,
     )
 
-    assert_equal 0, migrator.current_version
+    result = CONN.execute "SELECT value FROM schema_information WHERE name = 'version'"
+
+    assert result.rows.first.fetch("value")
   end
 
   describe "migrating up" do
@@ -138,6 +156,35 @@ describe "CassandraSchema::Migrator" do
       assert_equal "Failed migrating all files. Current schema version: 2", @fake_logger.stdout.pop
       assert_equal "Missing migration with version 3", @fake_logger.stdout.pop
     end
+
+    it "fails if another migration is running" do
+      migrator_a = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger: @fake_logger,
+      )
+
+      thr = Thread.new do
+        migrator_a.migrate
+      end
+
+      logger_b   = FakeLogger.new
+      migrator_b = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger: logger_b,
+      )
+
+      migrator_b.migrate
+
+      assert_equal "Can't run migrations. Schema is locked.", logger_b.stdout.pop
+
+      thr.join
+
+      migrator_b.migrate
+
+      assert_equal "Nothing to migrate.", logger_b.stdout.pop
+    end
   end
 
   describe "migrating down" do
@@ -152,8 +199,15 @@ describe "CassandraSchema::Migrator" do
     end
 
     it "migrates to target version" do
-      @migrator.migrate(1)
-      assert_equal 1, @migrator.current_version
+      logger   = FakeLogger.new
+      migrator = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger: logger,
+      )
+      migrator.migrate(1)
+
+      assert_equal 1, migrator.current_version
     end
   end
 end
