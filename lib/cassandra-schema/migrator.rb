@@ -2,19 +2,30 @@ require_relative "migration"
 
 module CassandraSchema
   class Migrator
-    attr_reader :connection, :current_version
+    attr_reader :connection, :current_version, :options
 
-    def initialize(connection:, migrations:, logger: Logger.new(STDOUT))
+    DEFAULT_OPTIONS = {
+      lock:         true,
+      lock_timeout: 30,
+    }
+
+    def initialize(connection:, migrations:, logger: Logger.new(STDOUT), options: {})
       @connection = connection
       @logger     = logger
       @migrations = migrations
+      @options    = DEFAULT_OPTIONS.merge(options)
 
       generate_migrator_schema!
-
-      @current_version = get_current_version || init_versioning
     end
 
     def migrate(target = nil)
+      if @options.fetch(:lock) && !lock_schema
+        @logger.info "Can't run migrations. Schema is locked."
+        return
+      end
+
+      @current_version = get_current_version
+
       target ||= @migrations.keys.max || 0
 
       @logger.info "Running migrations..."
@@ -29,12 +40,14 @@ module CassandraSchema
           # excludes current version's up
           (current_version + 1).upto(target) do |next_version|
             migrate_to(next_version, :up)
+            renew_lock if @options.fetch(:lock)
           end
         else
           # includes current version's :down
           # excludes target version's :down
           current_version.downto(target + 1) do |version|
             migrate_to(version, :down)
+            renew_lock if @options.fetch(:lock)
           end
         end
 
@@ -42,35 +55,49 @@ module CassandraSchema
         @logger.info "Done!"
       rescue => ex
         @logger.info "Failed migrating all files. Current schema version: #{@current_version}"
+      ensure
+        unlock_schema if @options.fetch(:lock)
       end
     end
 
     private
 
     def generate_migrator_schema!
-      result = @connection.execute <<~CQL
-        CREATE TABLE IF NOT EXISTS schema_information (
-          name VARCHAR,
-          value VARCHAR,
-          PRIMARY KEY (name)
-        );
-      CQL
+      @connection.execute(
+        <<~CQL,
+          CREATE TABLE IF NOT EXISTS schema_information (
+            name VARCHAR,
+            value VARCHAR,
+            PRIMARY KEY (name)
+          );
+        CQL
+        consistency: :quorum
+      )
+
+      @connection.execute(
+        <<~CQL,
+          INSERT INTO schema_information(name, value)
+          VALUES('version', '0')
+          IF NOT EXISTS
+        CQL
+        consistency: :quorum
+      )
     end
 
     def get_current_version
-      result = @connection.execute <<~CQL
-        SELECT value FROM schema_information WHERE name = 'version'
-      CQL
+      result = @connection.execute(
+        <<~CQL,
+          SELECT value FROM schema_information WHERE name = 'version'
+        CQL
+        consistency: :quorum
+      )
 
-      result.rows.any? && result.rows.first["value"].to_i
-    end
+      unless result.rows.any?
+        @logger.info "Can't load current schema version."
+        fail
+      end
 
-    def init_versioning
-      @connection.execute <<~CQL
-        INSERT INTO schema_information(name, value) VALUES('version', '0')
-      CQL
-
-      0
+      result.rows.first["value"].to_i
     end
 
     def update_version(target)
@@ -78,10 +105,46 @@ module CassandraSchema
         <<~CQL,
           UPDATE schema_information SET value = ? WHERE name = 'version'
         CQL
-        arguments: [target.to_s]
+        arguments: [target.to_s],
+        consistency: :quorum
       )
 
       @current_version = target
+    end
+
+    def lock_schema
+      result = @connection.execute(
+        <<~CQL,
+          INSERT INTO schema_information(name, value)
+          VALUES('lock', '1')
+          IF NOT EXISTS
+          USING TTL #{@options.fetch(:lock_timeout)}
+        CQL
+        consistency: :quorum
+      )
+
+      result.rows.first.fetch("[applied]")
+    end
+
+    def renew_lock
+      @connection.execute(
+        <<~CQL,
+          UPDATE schema_information
+          USING TTL #{@options.fetch(:lock_timeout)}
+          SET value = '1'
+          WHERE name = 'lock'
+        CQL
+        consistency: :quorum
+      )
+    end
+
+    def unlock_schema
+      @connection.execute(
+        <<~CQL,
+          DELETE FROM schema_information WHERE name = 'lock' IF EXISTS;
+        CQL
+        consistency: :quorum
+      )
     end
 
     def migrate_to(target, direction)
