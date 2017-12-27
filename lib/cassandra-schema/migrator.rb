@@ -63,19 +63,25 @@ module CassandraSchema
     private
 
     def generate_migrator_schema!
-      @connection.execute <<~CQL
-        CREATE TABLE IF NOT EXISTS schema_information (
-          name VARCHAR,
-          value VARCHAR,
-          PRIMARY KEY (name)
-        );
-      CQL
+      @connection.execute(
+        <<~CQL,
+          CREATE TABLE IF NOT EXISTS schema_information (
+            name VARCHAR,
+            value VARCHAR,
+            PRIMARY KEY (name)
+          );
+        CQL
+        consistency: :quorum
+      )
 
-      @connection.execute <<~CQL
-        INSERT INTO schema_information(name, value)
-        VALUES('version', '0')
-        IF NOT EXISTS
-      CQL
+      @connection.execute(
+        <<~CQL,
+          INSERT INTO schema_information(name, value)
+          VALUES('version', '0')
+          IF NOT EXISTS
+        CQL
+        consistency: :quorum
+      )
     end
 
     def get_current_version
@@ -99,36 +105,46 @@ module CassandraSchema
         <<~CQL,
           UPDATE schema_information SET value = ? WHERE name = 'version'
         CQL
-        arguments: [target.to_s]
+        arguments: [target.to_s],
+        consistency: :quorum
       )
 
       @current_version = target
     end
 
     def lock_schema
-      result = @connection.execute <<~CQL
-        INSERT INTO schema_information(name, value)
-        VALUES('lock', '1')
-        IF NOT EXISTS
-        USING TTL #{@options.fetch(:lock_timeout)}
-      CQL
+      result = @connection.execute(
+        <<~CQL,
+          INSERT INTO schema_information(name, value)
+          VALUES('lock', '1')
+          IF NOT EXISTS
+          USING TTL #{@options.fetch(:lock_timeout)}
+        CQL
+        consistency: :quorum
+      )
 
       result.rows.first.fetch("[applied]")
     end
 
     def renew_lock
-      @connection.execute <<~CQL
-        UPDATE schema_information
-        USING TTL #{@options.fetch(:lock_timeout)}
-        SET value = '1'
-        WHERE name = 'lock'
-      CQL
+      @connection.execute(
+        <<~CQL,
+          UPDATE schema_information
+          USING TTL #{@options.fetch(:lock_timeout)}
+          SET value = '1'
+          WHERE name = 'lock'
+        CQL
+        consistency: :quorum
+      )
     end
 
     def unlock_schema
-      @connection.execute <<~CQL
-        DELETE FROM schema_information WHERE name = 'lock';
-      CQL
+      @connection.execute(
+        <<~CQL,
+          DELETE FROM schema_information WHERE name = 'lock' IF EXISTS;
+        CQL
+        consistency: :quorum
+      )
     end
 
     def migrate_to(target, direction)
