@@ -2,7 +2,7 @@
 
 Gem::Specification.new do |s|
   s.name = "cassandra-schema"
-  s.version = "0.1.0"
+  s.version = "0.2.0"
   s.summary = "Cassandra schema migrations"
   s.license = "MIT"
   s.description = "Simple reversible schema migrations for Cassandra."
