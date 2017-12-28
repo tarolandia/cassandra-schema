@@ -2,6 +2,13 @@
 
 Simple reversible schema migrations for cassandra.
 
+## Changelog
+
+### Version `0.2.0`
+
+- Refactor `schema_information` queries to use LWT and `:quorum` consistency level
+- Implement a simple locking system to prevent concurrent migrations
+
 ## Usage
 
 CassandraSchema uses a DSL via the `CassandraSchema.migration(version)` method. A migration must have an `up` block with the changes you want to apply to the schema, and a `down` block reversing the change made by `up`.
