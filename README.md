@@ -4,6 +4,11 @@ Simple reversible schema migrations for cassandra.
 
 ## Changelog
 
+### Version `0.3.0`
+
+- Add `query_timeout` option for running migration commands. Default 30 seconds.
+- Log relevant exception message when running migrations
+
 ### Version `0.2.0`
 
 - Refactor `schema_information` queries to use LWT and `:quorum` consistency level
@@ -65,6 +70,7 @@ migrator = CassandraSchema::Migrator.new(
   connection: CONN, # any connection object implementing `execute` method
   migrations: CassandraSchema.migrations, # list of migrations
   logger: Logger.new, # any logger object implementing `info` and `error` methods
+  options: {}, # additional configuration
 )
 ```
 
@@ -81,6 +87,15 @@ migrator.migrate(2)
 ```
 
 CassandraSchema tracks which migrations you have already run.
+
+
+### Options
+
+name | default | description
+---- | ------- | -----------
+lock | true    | whether the Migrator must lock the schema before running migrations
+lock_timeout | 30 | number of seconds for auto-unlocking schema
+query_timeout | 30 | number of seconds after which to time out the command if it hasn’t completed
 
 ## Installation
 
