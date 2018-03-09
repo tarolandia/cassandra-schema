@@ -5,8 +5,9 @@ module CassandraSchema
     attr_reader :connection, :current_version, :options
 
     DEFAULT_OPTIONS = {
-      lock:         true,
-      lock_timeout: 30,
+      lock:          true,
+      lock_timeout:  30,
+      query_timeout: 30,
     }
 
     def initialize(connection:, migrations:, logger: Logger.new(STDOUT), options: {})
@@ -54,6 +55,7 @@ module CassandraSchema
         @logger.info "Current version: #{current_version}"
         @logger.info "Done!"
       rescue => ex
+        @logger.error ex.message if ex.message && !ex.message.empty?
         @logger.info "Failed migrating all files. Current schema version: #{@current_version}"
       ensure
         unlock_schema if @options.fetch(:lock)
@@ -161,7 +163,7 @@ module CassandraSchema
       index    = 0
 
       commands.each do |command|
-        unless execute_command(command)
+        unless execute_command(command, timeout: @options.fetch(:query_timeout))
           message = "Failed migrating to version #{target}."
 
           if index > 0
@@ -174,7 +176,9 @@ module CassandraSchema
               .fetch(direction == :up ? :down : :up)
               .last(index)
 
-            results = recover_commands.map { |cmd| execute_command(cmd) }
+            results = recover_commands.map { |cmd|
+              execute_command(cmd, timeout: @options.fetch(:query_timeout))
+            }
 
             message += results.all? ? "Ok." : "Failed."
           end
@@ -190,9 +194,9 @@ module CassandraSchema
       update_version(new_version)
     end
 
-    def execute_command(command)
+    def execute_command(command, options)
       begin
-        @connection.execute command
+        @connection.execute command, options
         true
       rescue => ex
         @logger.error ex.message

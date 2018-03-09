@@ -1,4 +1,5 @@
 require "minitest/autorun"
+require "mocha/setup"
 
 require_relative "support/connections"
 require_relative "../lib/cassandra-schema/migrator"
@@ -184,6 +185,25 @@ describe "CassandraSchema::Migrator" do
       migrator_b.migrate
 
       assert_equal "Nothing to migrate.", logger_b.stdout.pop
+    end
+
+    it "runs commands with custom timeout" do
+      migrator = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger:     @fake_logger,
+        options:   { query_timeout: 45 },
+      )
+
+      migrator.expects(:execute_command).times(4).with(anything, { timeout: 45 }).returns(true)
+
+      migrator.expects(:lock_schema).returns(true)
+      migrator.expects(:get_current_version).returns(0)
+      migrator.expects(:update_version).times(2)
+      migrator.expects(:renew_lock).times(2)
+      migrator.expects(:unlock_schema)
+
+      migrator.migrate
     end
   end
 
