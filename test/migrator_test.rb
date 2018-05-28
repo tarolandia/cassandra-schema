@@ -100,7 +100,7 @@ describe "CassandraSchema::Migrator" do
   end
 
   it "initializes schema_information table if not exists" do
-    migrator = CassandraSchema::Migrator.new(
+    CassandraSchema::Migrator.new(
       connection: CONN,
       migrations: {},
       logger: @fake_logger,
@@ -202,6 +202,26 @@ describe "CassandraSchema::Migrator" do
       migrator.expects(:update_version).times(2)
       migrator.expects(:renew_lock).times(2)
       migrator.expects(:unlock_schema)
+
+      migrator.migrate
+    end
+
+    it "runs commands with custom delay" do
+      migrator = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger:     @fake_logger,
+        options:    {
+          query_delay: 500,
+        },
+      )
+
+      migrator.expects(:delay).times(4).with(0.5)
+
+      migrator.expects(:lock_schema).returns(true)
+      migrator.expects(:get_current_version).returns(0)
+      migrator.expects(:update_version).times(2)
+      migrator.expects(:renew_lock).times(2)
 
       migrator.migrate
     end
