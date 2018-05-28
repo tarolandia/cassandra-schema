@@ -7,6 +7,7 @@ module CassandraSchema
     DEFAULT_OPTIONS = {
       lock:          true,
       lock_timeout:  30,
+      lock_retry:    [],
       query_timeout: 30,
     }
 
@@ -20,7 +21,17 @@ module CassandraSchema
     end
 
     def migrate(target = nil)
-      if @options.fetch(:lock) && !lock_schema
+      lock_retry = @options.fetch(:lock_retry).dup
+
+      begin
+        raise if @options.fetch(:lock) && !lock_schema
+      rescue
+        if wait = lock_retry.shift
+          @logger.info "Schema is locked; retrying in #{wait} seconds"
+          sleep wait
+          retry
+        end
+
         @logger.info "Can't run migrations. Schema is locked."
         return
       end
