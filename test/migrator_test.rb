@@ -187,6 +187,43 @@ describe "CassandraSchema::Migrator" do
       assert_equal "Nothing to migrate.", logger_b.stdout.pop
     end
 
+    it "retries if schema is locked" do
+      migrator = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger:     @fake_logger,
+        options:    { lock_retry: [1, 1, 2, 3] },
+      )
+
+      migrator.expects(:lock_schema).times(4).returns(false, false, false, true)
+
+      migrator.migrate
+
+      assert_equal "Schema is locked; retrying in 1 seconds", @fake_logger.stdout.shift
+      assert_equal "Schema is locked; retrying in 1 seconds", @fake_logger.stdout.shift
+      assert_equal "Schema is locked; retrying in 2 seconds", @fake_logger.stdout.shift
+      assert_equal "Running migrations...", @fake_logger.stdout.shift
+
+      assert_equal 2, migrator.current_version
+    end
+
+    it "fails if schema is locked after retring" do
+      migrator = CassandraSchema::Migrator.new(
+        connection: CONN,
+        migrations: CassandraSchema.migrations,
+        logger:     @fake_logger,
+        options:    { lock_retry: [1, 1] },
+      )
+
+      migrator.expects(:lock_schema).times(3).returns(false, false, false)
+
+      migrator.migrate
+
+      assert_equal "Schema is locked; retrying in 1 seconds", @fake_logger.stdout.shift
+      assert_equal "Schema is locked; retrying in 1 seconds", @fake_logger.stdout.shift
+      assert_equal "Can't run migrations. Schema is locked.", @fake_logger.stdout.shift
+    end
+
     it "runs commands with custom timeout" do
       migrator = CassandraSchema::Migrator.new(
         connection: CONN,
