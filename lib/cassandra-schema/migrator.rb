@@ -9,6 +9,7 @@ module CassandraSchema
       lock_timeout:  30,
       lock_retry:    [],
       query_timeout: 30,
+      query_delay:   0,
     }
 
     def initialize(connection:, migrations:, logger: Logger.new(STDOUT), options: {})
@@ -206,8 +207,18 @@ module CassandraSchema
     end
 
     def execute_command(command, options)
+      query_delay = @options.fetch(:query_delay)
+
       begin
         @connection.execute command, options
+
+        # There is a Cassandra bug, where schema changes executed in quick succession
+        # can result in internal corruption:
+        #
+        # https://stackoverflow.com/questions/29030661/creating-new-table-with-cqlsh-on-existing-keyspace-column-family-id-mismatch#answer
+        # https://issues.apache.org/jira/browse/CASSANDRA-5025
+        delay(query_delay / 1000.0) if query_delay > 0
+
         true
       rescue => ex
         @logger.error ex.message
@@ -215,5 +226,8 @@ module CassandraSchema
       end
     end
 
+    private def delay(delay_time)
+      sleep(delay_time)
+    end
   end
 end
