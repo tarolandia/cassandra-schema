@@ -4,6 +4,11 @@ Simple reversible schema migrations for cassandra.
 
 ## Changelog
 
+### Version `0.4.0`
+
+- Add `query_delay` option to configure sleep time between schema changes. Default `0`.
+- Add `lock_retry` option to retry migration if schema is locked. Default `[]`
+
 ### Version `0.3.0`
 
 - Add `query_timeout` option for running migration commands. Default 30 seconds.
@@ -91,11 +96,13 @@ CassandraSchema tracks which migrations you have already run.
 
 ### Options
 
-name | default | description
----- | ------- | -----------
-lock | true    | whether the Migrator must lock the schema before running migrations
-lock_timeout | 30 | number of seconds for auto-unlocking schema
-query_timeout | 30 | number of seconds after which to time out the command if it hasn’t completed
+name | default | description | example
+---- | ------- | ----------- | -------
+lock | true    | whether the Migrator must lock the schema before running migrations |
+lock_timeout | 30 | number of seconds for auto-unlocking schema |
+lock_retry | [] | array of retries. The size of the array is the max number of retries. Each item of the array is the number of seconds to wait until the next retry. | [1, 1, 2, 3, 5, 8]
+query_timeout | 30 | number of seconds after which to time out the command if it hasn’t completed |
+query_delay | 0 | number of millisenconds to wait after each schema change |
 
 ## Installation
 
